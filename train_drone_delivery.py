@@ -10,7 +10,7 @@ model = PPO("MlpPolicy", env, verbose=1)
 
 # Entraîner le modèle et afficher l'environnement
 total_timesteps = 100000
-n_display_interval = 10000  # Afficher l'environnement tous les 1000 timesteps
+n_display_interval = 1000  # Afficher l'environnement tous les 1000 timesteps
 
 for i in range(0, total_timesteps, n_display_interval):
     model.learn(total_timesteps=n_display_interval, reset_num_timesteps=False)

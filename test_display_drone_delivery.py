@@ -1,42 +1,48 @@
+import time
 import numpy as np
-import pygame
 from stable_baselines3 import PPO
 from drone_delivery_env import DroneDeliveryEnv
 
-# Charger le modèle pré-entraîné
-model = PPO.load("checkpoints/ppo_multi_drone_delivery_3")
-
-# Créer l'environnement
+# Charger l'environnement
 env = DroneDeliveryEnv()
+env.show_render = True  # Activer l'affichage si nécessaire
 
-# Réinitialiser l'environnement et extraire l'observation
-obs, _ = env.reset()  # Nous supposons ici que env.reset() renvoie un tuple (obs, info)
+# Charger le modèle entraîné
+model_path = "checkpoints/ppo_multi_drone_delivery_3"
+model = PPO.load(model_path)
 
-# Paramètre pour contrôler l'affichage pendant le test
-show_render = True  # Mettre à True si vous souhaitez voir l'environnement pendant les tests
+# Configurer les paramètres de test
+num_episodes = 10  # Nombre d'épisodes à tester
+max_steps_per_episode = 100  # Nombre maximum de pas par épisode
 
-# Effectuer une série d'actions avec le modèle
-total_steps = 1000  # Nombre total de steps de test
-for step in range(total_steps):
-    # Choisir une action basée sur l'observation courante avec le modèle
-    action, _states = model.predict(obs, deterministic=True)
+# Boucle de test
+for episode in range(num_episodes):
+    obs, _ = env.reset()  # Réinitialiser l'environnement
+    total_reward = 0
+    done = False
+    truncated = False
+    steps = 0
 
-    # Passer l'action au modèle et recevoir la prochaine observation et la récompense
-    obs, reward, done, truncated, info = env.step(action)
+    print(f"--- Épisode {episode + 1} ---")
+    while not (done or truncated) and steps < max_steps_per_episode:
+        # Obtenir une action prédite par le modèle
+        action, _states = model.predict(obs, deterministic=True)
 
-    # Ajouter des informations de débogage
-    if done:
-        print(f"Episode terminé à l'étape {step} !")
-        print(f"Info: {info}")
+        # Appliquer l'action et obtenir l'état suivant
+        obs, reward, done, truncated, info = env.step(action)
 
-    # Afficher l'environnement à chaque étape si show_render est True
-    if show_render:
-        env.render()
+        # Ajouter la récompense obtenue
+        total_reward += reward
+        steps += 1
 
-    # Si l'environnement est terminé, réinitialiser
-    if done:
-        print("Réinitialisation de l'environnement")
-        obs, _ = env.reset()  # Réinitialisation de l'environnement
+        if env.show_render:
+            env.render()
 
-# Fermer proprement l'environnement
+        # Pause pour ralentir l'affichage
+        time.sleep(0.1)
+
+    print(f"Épisode terminé en {steps} étapes avec une récompense totale de {total_reward:.2f}\n")
+
+# Fermer l'environnement
 env.close()
+print("Tests terminés.")
