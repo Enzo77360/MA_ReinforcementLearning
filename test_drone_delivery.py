@@ -4,7 +4,7 @@ from drone_delivery_env import DroneDeliveryEnv
 
 # Charger l'environnement
 env = DummyVecEnv([lambda: DroneDeliveryEnv()])  # VecEnv nécessaire pour SB3
-model = PPO.load("ppo_multi_drone_delivery")
+model = PPO.load("checkpoints/ppo_multi_drone_delivery_3.zip")
 
 # Tester sur quelques épisodes
 obs = env.reset()
