@@ -70,19 +70,23 @@ class DroneDeliveryEnv(Env):
         return self._get_obs(), {}
 
     def step(self, actions):
-        rewards = np.zeros(self.num_drones)
+        rewards_personnel = np.zeros(self.num_drones)  # Récompenses personnelles
+        rewards_collectives = 0  # Récompenses collectives
         done = False
         info = {}
 
-        collision_penalty = -5
-        move_reward = 0.1
+        collision_penalty = -10
         delivery_reward = 10
-        inactivity_penalty = -5
+        inactivity_penalty = -10
+        already_delivered_penalty = -1  # Pénalité pour les drones qui passent sur un colis déjà livré
+        exploration_reward = 0.1  # Petite récompense pour l'exploration d'une nouvelle case
 
+        # Suivi des cases visitées par tous les drones
+        visited_cells = np.zeros((self.grid_size, self.grid_size), dtype=bool)
+
+        # Gestion des actions des drones
         for i, action in enumerate(actions):
             self.drone_steps[i] += 1  # Augmente le compteur de déplacements
-
-            initial_pos = self.pos[i].copy()
 
             # Appliquer le mouvement selon l'action
             if action == 0:  # Haut
@@ -97,20 +101,36 @@ class DroneDeliveryEnv(Env):
             # Vérification des collisions entre drones
             for j in range(self.num_drones):
                 if i != j and np.array_equal(self.pos[i], self.pos[j]):
-                    rewards[i] += collision_penalty
-                    rewards[j] += collision_penalty
+                    rewards_personnel[i] += collision_penalty
+                    rewards_personnel[j] += collision_penalty
 
             # Vérification de la livraison d'un colis
             for package_idx, package in enumerate(self.packages):
                 if not self.delivered[package_idx] and np.array_equal(self.pos[i], package):
                     self.delivered[package_idx] = True
-                    rewards[i] += delivery_reward
+                    rewards_personnel[i] += delivery_reward  # Récompense pour la livraison du colis
                     self.drone_steps[i] = 0  # Réinitialise le compteur après livraison
 
+                # Pénalité si le drone passe sur un colis déjà livré
+                elif self.delivered[package_idx] and np.array_equal(self.pos[i], package):
+                    rewards_personnel[i] += already_delivered_penalty
+
+            # Vérifier si la case visitée est une nouvelle case (non visitée auparavant)
+            if not visited_cells[self.pos[i][0], self.pos[i][1]]:
+                rewards_personnel[i] += exploration_reward  # Récompense pour l'exploration d'une nouvelle case
+                visited_cells[self.pos[i][0], self.pos[i][1]] = True  # Marquer la case comme visitée
+
             # Appliquer la pénalité d'inactivité
-            if self.drone_steps[i] > 50:
-                rewards[i] += inactivity_penalty
+            if self.drone_steps[i] > 25:
+                rewards_personnel[i] += inactivity_penalty
                 self.drone_steps[i] = 0  # Réinitialise le compteur après pénalité
+
+        # Récompense collective : donner une récompense lorsque tous les colis sont livrés
+        if all(self.delivered):
+            rewards_collectives += 50  # Récompense collective pour avoir livré tous les colis
+
+        # Total des récompenses pour cet épisode
+        total_rewards = np.sum(rewards_personnel) + rewards_collectives
 
         # Vérifier si tous les colis ont été livrés
         if all(self.delivered):
@@ -122,7 +142,7 @@ class DroneDeliveryEnv(Env):
         if self.show_render:
             self.render()
 
-        return self._get_obs(), np.sum(rewards), terminated, truncated, info
+        return self._get_obs(), total_rewards, terminated, truncated, info
 
     def render(self):
         # Remplir l'arrière-plan
