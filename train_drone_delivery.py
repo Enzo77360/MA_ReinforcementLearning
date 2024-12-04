@@ -35,7 +35,7 @@ class MonitorCallback:
 monitor_callback = MonitorCallback()
 
 # Entraîner le modèle avec le callback personnalisé
-total_timesteps = 200000
+total_timesteps = 100000
 n_display_interval = 1000  # Afficher l'environnement tous les 1000 timesteps
 
 for i in range(0, total_timesteps, n_display_interval):
@@ -46,7 +46,7 @@ for i in range(0, total_timesteps, n_display_interval):
         env.render()
 
 # Sauvegarder le modèle
-model.save("checkpoints/ppo_multi_drone_delivery_5")
+model.save("checkpoints/ppo_multi_drone_delivery_1")
 print("Entraînement terminé et modèle sauvegardé !")
 
 # Plotter l'évolution de la longueur et des récompenses des épisodes

@@ -46,16 +46,17 @@ class DroneDeliveryEnv(Env):
 
         self.show_render = False
 
-        self.reward_found_person = 10
-        self.reward_staying_with_person = 0.1
-        self.reward_deliver_water = 10
-        self.reward_collective_success = 100
-        self.penalty_carrying_water = -0.1  # Pénalité par déplacement en transportant l'eau
-        self.penalty_inactivity = -0.1  # Malus si aucune personne n'est trouvée après 20 steps
-        self.reward_exploration = 0.5  # Bonus pour explorer une nouvelle case
+        self.reward_found_person = 1
+        self.reward_staying_with_person = 0.01
+        self.reward_deliver_water = 1
+        self.reward_collective_success = 10
+        self.penalty_carrying_water = -0.01  # Pénalité par déplacement en transportant l'eau
+        self.penalty_inactivity = -0.05  # Malus si aucune personne n'est trouvée après 20 steps
+        self.reward_exploration = 0.05  # Bonus pour explorer une nouvelle case
 
         self.person_found = False
         self.water_delivered = False
+        self.water_announced = False
 
     def _get_obs(self):
         drone_positions = self.pos.flatten()
@@ -75,6 +76,7 @@ class DroneDeliveryEnv(Env):
         self.person_found = False
         self.water_delivered = False
         self.carrying_water = [False] * self.num_drones
+        self.water_announced = False
 
         self.pos = np.random.randint(0, self.grid_size, size=(self.num_drones, 2))
         self.visited_cells = np.zeros((self.grid_size, self.grid_size), dtype=bool)
@@ -120,14 +122,20 @@ class DroneDeliveryEnv(Env):
                 if np.array_equal(self.pos[i], self.person_position):
                     rewards[i] += self.reward_staying_with_person
 
+
+
+        # Gestion de la prise d'eau
         for i in range(self.num_drones):
             if not self.carrying_water[i] and np.array_equal(self.pos[i], self.water_position):
-                if not self.person_found:
-                    rewards[i] -= 2
-                else:
-                    rewards[i] += 20
-
-                self.carrying_water[i] = True
+                if not self.water_announced:  # Premier drone à prendre l'eau
+                    if not self.person_found:
+                        rewards[i] -= 0.2
+                    else:
+                        rewards[i] += 2
+                    self.carrying_water[i] = True
+                    self.water_announced = True  # Annonce que l'eau a été prise
+                else:  # L'eau a déjà été prise, appliquer un malus
+                    rewards[i] -= 0.01
 
         for i in range(self.num_drones):
             if self.carrying_water[i] and np.array_equal(self.pos[i], self.person_position):
