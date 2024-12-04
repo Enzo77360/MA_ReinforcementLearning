@@ -8,7 +8,7 @@ env = DroneDeliveryEnv()
 env.show_render = True  # Activer l'affichage si nécessaire
 
 # Charger le modèle entraîné
-model_path = "checkpoints/ppo_multi_drone_delivery_5"
+model_path = "checkpoints/ppo_multi_drone_delivery_4"
 model = PPO.load(model_path)
 
 # Configurer les paramètres de test
@@ -39,7 +39,7 @@ for episode in range(num_episodes):
             env.render()
 
         # Pause pour ralentir l'affichage
-        time.sleep(0.5)
+        time.sleep(0.1)
 
     print(f"Épisode terminé en {steps} étapes avec une récompense totale de {total_reward:.2f}\n")
 

@@ -2,23 +2,23 @@ import numpy as np
 import pygame
 from gymnasium import Env, spaces
 
-
 class DroneDeliveryEnv(Env):
     def __init__(self):
         super().__init__()
 
         self.grid_size = 10
         self.num_drones = 3
-        self.num_packages = 6
+        self.water_position = np.array([0, 0])  # Position fixe de l'eau
+        self.person_position = None  # Position de la personne
         self.pos = np.zeros((self.num_drones, 2), dtype=np.int32)
+        self.carrying_water = [False] * self.num_drones  # État de transport de l'eau pour chaque drone
 
-        # Définition des colis et limites de la grille
-        self.packages = np.array([[2, 3], [8, 8], [8, 2], [1, 7], [9, 5], [7, 9]])
-        self.delivered = np.zeros(self.num_packages, dtype=bool)
-        self.reserved_packages = [None] * self.num_drones
+        self.visited_cells = np.zeros((self.grid_size, self.grid_size), dtype=bool)  # Cases explorées
+        self.steps_since_start = 0  # Nombre total d'étapes depuis le début
+        self.steps_without_finding_person = 0  # Étapes sans trouver la personne
 
-        self.drone_steps = np.zeros(self.num_drones, dtype=np.int32)
-        obs_dim = self.num_drones * 2 + self.num_packages * 2 + self.num_packages
+        # Définition des espaces d'observation et d'action
+        obs_dim = self.num_drones * 2 + 2 + 2 + self.num_drones  # Positions des drones + eau + personne + état transport
         self.observation_space = spaces.Box(low=0, high=self.grid_size, shape=(obs_dim,), dtype=np.int32)
         self.action_space = spaces.MultiDiscrete([4] * self.num_drones)
 
@@ -30,65 +30,68 @@ class DroneDeliveryEnv(Env):
         pygame.display.set_caption("Drone Delivery")
         self.clock = pygame.time.Clock()
 
+        # Chargement des logos
+        self.drone_logo = pygame.image.load('images/drone.png')  # Assurez-vous que le fichier existe
+        self.person_logo = pygame.image.load('images/package.png')
+        self.person_found_logo = pygame.image.load('images/delivered_package.png')
+        self.water_logo = pygame.image.load('images/santa.png')
+        self.water_drone_logo = pygame.image.load('images/water_drone.png')
+
+        # Redimensionnement des logos à la taille de la cellule
+        self.drone_logo = pygame.transform.scale(self.drone_logo, (self.cell_size // 1.2, self.cell_size // 1.2))
+        self.person_logo = pygame.transform.scale(self.person_logo, (self.cell_size, self.cell_size))
+        self.person_found_logo = pygame.transform.scale(self.person_found_logo, (self.cell_size, self.cell_size))
+        self.water_logo = pygame.transform.scale(self.water_logo, (self.cell_size, self.cell_size))
+        self.water_drone_logo = pygame.transform.scale(self.water_drone_logo, (self.cell_size // 1.2, self.cell_size // 1.2))
+
         self.show_render = False
 
-        # Chargement des skins
-        self.drone_image = pygame.image.load("images/drone.png")
-        self.package_image = pygame.image.load("images/package.png")
-        self.delivered_package_image = pygame.image.load("images/delivered_package.png")
+        self.reward_found_person = 10
+        self.reward_staying_with_person = 0.1
+        self.reward_deliver_water = 10
+        self.reward_collective_success = 100
+        self.penalty_carrying_water = -0.1  # Pénalité par déplacement en transportant l'eau
+        self.penalty_inactivity = -0.1  # Malus si aucune personne n'est trouvée après 20 steps
+        self.reward_exploration = 0.5  # Bonus pour explorer une nouvelle case
 
-        # Redimensionnement des images
-        self.drone_image = pygame.transform.scale(self.drone_image, (self.cell_size, self.cell_size))
-        self.package_image = pygame.transform.scale(self.package_image, (self.cell_size, self.cell_size))
-        self.delivered_package_image = pygame.transform.scale(self.delivered_package_image, (self.cell_size, self.cell_size))
+        self.person_found = False
+        self.water_delivered = False
 
     def _get_obs(self):
         drone_positions = self.pos.flatten()
-        package_positions = self.packages.flatten()
-        delivered_status = self.delivered.astype(np.int32)
-        return np.concatenate([drone_positions, package_positions, delivered_status])
+        carrying_status = np.array(self.carrying_water, dtype=np.int32)
+        return np.concatenate([drone_positions, self.water_position, self.person_position, carrying_status])
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        # Réinitialisation des colis et des drones
-        self.delivered = np.zeros(self.num_packages, dtype=bool)
-        self.reserved_packages = [None] * self.num_drones
-        self.drone_steps = np.zeros(self.num_drones, dtype=np.int32)
+        # Générer une position aléatoire pour la personne
+        while True:
+            person_position = np.random.randint(0, self.grid_size, size=2)
+            if not np.array_equal(person_position, self.water_position):
+                break
+        self.person_position = person_position
 
-        # Positionnement initial des drones avec une distance minimale
-        min_distance = 2
-        self.pos = np.zeros((self.num_drones, 2), dtype=np.int32)
+        self.person_found = False
+        self.water_delivered = False
+        self.carrying_water = [False] * self.num_drones
 
-        for i in range(self.num_drones):
-            while True:
-                new_pos = np.random.randint(0, self.grid_size, size=2)
-                if all(np.linalg.norm(new_pos - self.pos[j]) >= min_distance for j in range(i)):
-                    self.pos[i] = new_pos
-                    break
+        self.pos = np.random.randint(0, self.grid_size, size=(self.num_drones, 2))
+        self.visited_cells = np.zeros((self.grid_size, self.grid_size), dtype=bool)
+        self.steps_since_start = 0
+        self.steps_without_finding_person = 0
 
         return self._get_obs(), {}
 
     def step(self, actions):
-        rewards_personnel = np.zeros(self.num_drones)  # Récompenses personnelles
-        rewards_collectives = 0  # Récompenses collectives
+        rewards = np.zeros(self.num_drones)
         done = False
         info = {}
 
-        collision_penalty = -10
-        delivery_reward = 10
-        inactivity_penalty = -10
-        already_delivered_penalty = -1  # Pénalité pour les drones qui passent sur un colis déjà livré
-        exploration_reward = 0.1  # Petite récompense pour l'exploration d'une nouvelle case
+        self.steps_since_start += 1
+        self.steps_without_finding_person += 1
 
-        # Suivi des cases visitées par tous les drones
-        visited_cells = np.zeros((self.grid_size, self.grid_size), dtype=bool)
-
-        # Gestion des actions des drones
         for i, action in enumerate(actions):
-            self.drone_steps[i] += 1  # Augmente le compteur de déplacements
-
-            # Appliquer le mouvement selon l'action
             if action == 0:  # Haut
                 self.pos[i][1] = max(self.pos[i][1] - 1, 0)
             elif action == 1:  # Bas
@@ -98,54 +101,55 @@ class DroneDeliveryEnv(Env):
             elif action == 3:  # Droite
                 self.pos[i][0] = min(self.pos[i][0] + 1, self.grid_size - 1)
 
-            # Vérification des collisions entre drones
-            for j in range(self.num_drones):
-                if i != j and np.array_equal(self.pos[i], self.pos[j]):
-                    rewards_personnel[i] += collision_penalty
-                    rewards_personnel[j] += collision_penalty
+            if self.carrying_water[i]:
+                rewards[i] += self.penalty_carrying_water
 
-            # Vérification de la livraison d'un colis
-            for package_idx, package in enumerate(self.packages):
-                if not self.delivered[package_idx] and np.array_equal(self.pos[i], package):
-                    self.delivered[package_idx] = True
-                    rewards_personnel[i] += delivery_reward  # Récompense pour la livraison du colis
-                    self.drone_steps[i] = 0  # Réinitialise le compteur après livraison
+            if not self.visited_cells[self.pos[i][0], self.pos[i][1]]:
+                rewards[i] += self.reward_exploration
+                self.visited_cells[self.pos[i][0], self.pos[i][1]] = True
 
-                # Pénalité si le drone passe sur un colis déjà livré
-                elif self.delivered[package_idx] and np.array_equal(self.pos[i], package):
-                    rewards_personnel[i] += already_delivered_penalty
+        for i in range(self.num_drones):
+            if not self.person_found and np.array_equal(self.pos[i], self.person_position):
+                self.person_found = True
+                rewards[i] += self.reward_found_person
+                self.steps_without_finding_person = 0
+                info['person_position_shared'] = self.person_position
 
-            # Vérifier si la case visitée est une nouvelle case (non visitée auparavant)
-            if not visited_cells[self.pos[i][0], self.pos[i][1]]:
-                rewards_personnel[i] += exploration_reward  # Récompense pour l'exploration d'une nouvelle case
-                visited_cells[self.pos[i][0], self.pos[i][1]] = True  # Marquer la case comme visitée
+        if self.person_found and not self.water_delivered:
+            for i in range(self.num_drones):
+                if np.array_equal(self.pos[i], self.person_position):
+                    rewards[i] += self.reward_staying_with_person
 
-            # Appliquer la pénalité d'inactivité
-            if self.drone_steps[i] > 25:
-                rewards_personnel[i] += inactivity_penalty
-                self.drone_steps[i] = 0  # Réinitialise le compteur après pénalité
+        for i in range(self.num_drones):
+            if not self.carrying_water[i] and np.array_equal(self.pos[i], self.water_position):
+                if not self.person_found:
+                    rewards[i] -= 2
+                else:
+                    rewards[i] += 20
 
-        # Récompense collective : donner une récompense lorsque tous les colis sont livrés
-        if all(self.delivered):
-            rewards_collectives += 50  # Récompense collective pour avoir livré tous les colis
+                self.carrying_water[i] = True
 
-        # Total des récompenses pour cet épisode
-        total_rewards = np.sum(rewards_personnel) + rewards_collectives
+        for i in range(self.num_drones):
+            if self.carrying_water[i] and np.array_equal(self.pos[i], self.person_position):
+                self.water_delivered = True
+                self.water_available = False
+                rewards += self.reward_deliver_water / self.num_drones
+                self.carrying_water[i] = False
 
-        # Vérifier si tous les colis ont été livrés
-        if all(self.delivered):
+        if self.person_found and self.water_delivered:
+            rewards += self.reward_collective_success / self.num_drones
             done = True
 
-        terminated = done
-        truncated = False
+        if self.steps_without_finding_person >= 20 and not self.person_found:
+            rewards += self.penalty_inactivity
 
         if self.show_render:
             self.render()
 
-        return self._get_obs(), total_rewards, terminated, truncated, info
+        return self._get_obs(), np.sum(rewards), done, False, info
+
 
     def render(self):
-        # Remplir l'arrière-plan
         self.screen.fill((255, 255, 255))
 
         # Dessiner la grille
@@ -154,30 +158,32 @@ class DroneDeliveryEnv(Env):
         for y in range(0, self.screen_size, self.cell_size):
             pygame.draw.line(self.screen, (200, 200, 200), (0, y), (self.screen_size, y))
 
-        # Dessiner les drones
+        # Centrer les drones
         for i in range(self.num_drones):
-            self.screen.blit(
-                self.drone_image,
-                (self.pos[i][0] * self.cell_size, self.pos[i][1] * self.cell_size)
-            )
-
-        # Dessiner les colis
-        for j, package in enumerate(self.packages):
-            if not self.delivered[j]:
-                self.screen.blit(
-                    self.package_image,
-                    (package[0] * self.cell_size, package[1] * self.cell_size)
-                )
+            # Calculer le décalage pour centrer l'image sur la cellule
+            drone_x = self.pos[i][0] * self.cell_size + (self.cell_size - self.drone_logo.get_width()) // 2
+            drone_y = self.pos[i][1] * self.cell_size + (self.cell_size - self.drone_logo.get_height()) // 2
+            if self.carrying_water[i]:
+                self.screen.blit(self.water_drone_logo, (drone_x, drone_y))
             else:
-                self.screen.blit(
-                    self.delivered_package_image,
-                    (package[0] * self.cell_size, package[1] * self.cell_size)
-                )
+                self.screen.blit(self.drone_logo, (drone_x, drone_y))
 
-        # Mettre à jour l'affichage
+        # Centrer la personne
+        person_x = self.person_position[0] * self.cell_size + (self.cell_size - self.person_logo.get_width()) // 2
+        person_y = self.person_position[1] * self.cell_size + (self.cell_size - self.person_logo.get_height()) // 2
+        if self.person_found:
+            self.screen.blit(self.person_found_logo, (person_x, person_y))
+        else:
+            self.screen.blit(self.person_logo, (person_x, person_y))
+
+        # Centrer l'eau
+        water_x = self.water_position[0] * self.cell_size + (self.cell_size - self.water_logo.get_width()) // 2
+        water_y = self.water_position[1] * self.cell_size + (self.cell_size - self.water_logo.get_height()) // 2
+        self.screen.blit(self.water_logo, (water_x, water_y))
+
         pygame.display.update()
 
-        # Gérer les événements
+        # Événements
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.close()
@@ -186,7 +192,6 @@ class DroneDeliveryEnv(Env):
 
     def close(self):
         pygame.quit()
-
 
 if __name__ == "__main__":
     env = DroneDeliveryEnv()
