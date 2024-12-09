@@ -31,11 +31,11 @@ class DroneDeliveryEnv(Env):
         self.clock = pygame.time.Clock()
 
         # Chargement des logos
-        self.drone_logo = pygame.image.load('images/drone.png')  # Assurez-vous que le fichier existe
-        self.person_logo = pygame.image.load('images/package.png')
-        self.person_found_logo = pygame.image.load('images/delivered_package.png')
-        self.water_logo = pygame.image.load('images/santa.png')
-        self.water_drone_logo = pygame.image.load('images/water_drone.png')
+        self.drone_logo = pygame.image.load('../images/drone.png')  # Assurez-vous que le fichier existe
+        self.person_logo = pygame.image.load('../images/package.png')
+        self.person_found_logo = pygame.image.load('../images/delivered_package.png')
+        self.water_logo = pygame.image.load('../images/santa.png')
+        self.water_drone_logo = pygame.image.load('../images/water_drone.png')
 
         # Redimensionnement des logos à la taille de la cellule
         self.drone_logo = pygame.transform.scale(self.drone_logo, (self.cell_size // 1.2, self.cell_size // 1.2))
@@ -45,6 +45,9 @@ class DroneDeliveryEnv(Env):
         self.water_drone_logo = pygame.transform.scale(self.water_drone_logo, (self.cell_size // 1.2, self.cell_size // 1.2))
 
         self.show_render = False
+
+        # Ajouter l'attribut is_testing pour déterminer si c'est un test
+        self.is_testing = False
 
         self.reward_found_person = 1
         self.reward_staying_with_person = 0.01
@@ -59,9 +62,32 @@ class DroneDeliveryEnv(Env):
         self.water_announced = False
 
     def _get_obs(self):
-        drone_positions = self.pos.flatten()
-        carrying_status = np.array(self.carrying_water, dtype=np.int32)
-        return np.concatenate([drone_positions, self.water_position, self.person_position, carrying_status])
+        if self.is_testing:
+            # Pour chaque drone, ne fournir que sa propre position et son état de transport
+            drone_positions = self.pos.flatten()  # Positions de tous les drones
+            person_position = self.person_position  # Position de la personne
+            water_position = np.array([0, 0])  # Position de l'eau (vide)
+            carrying_status = self.carrying_water # Statut de transport des drones
+
+            # Ajouter une perturbation aléatoire dans l'observation tous les 7 pas environ
+            if np.random.rand() < 1 / 7:  # Environ 1 chance sur 7 d'introduire une perturbation
+                # Perturber les positions des drones (les mettre à zéro)
+                drone_positions = np.zeros_like(drone_positions)
+
+            # Construire l'observation avec les bonnes valeurs
+            observation = np.concatenate([
+                drone_positions,  # Positions des drones (potentiellement perturbées)
+                water_position,  # Position de l'eau
+                person_position,  # Position de la personne
+                carrying_status  # Statut de transport des drones
+            ])
+
+            return observation
+        else:
+            # En phase d'entraînement, l'observation est complète (positions, eau, personne, état transport)
+            drone_positions = self.pos.flatten()
+            carrying_status = np.array(self.carrying_water, dtype=np.int32)
+            return np.concatenate([drone_positions, self.water_position, self.person_position, carrying_status])
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)

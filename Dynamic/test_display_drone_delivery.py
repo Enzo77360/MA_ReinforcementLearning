@@ -8,7 +8,7 @@ env = DroneDeliveryEnv()
 env.show_render = True  # Activer l'affichage si nécessaire
 
 # Charger le modèle entraîné
-model_path = "checkpoints/ppo_multi_drone_delivery_1"
+model_path = "/Users/enzosebiane/PycharmProjects/MA_ReinforcementLearning/checkpoints/ppo_multi_drone_delivery_1.zip"
 model = PPO.load(model_path)
 
 # Configurer les paramètres de test

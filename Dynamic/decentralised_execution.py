@@ -1,13 +1,15 @@
 import time
+import numpy as np
 from stable_baselines3 import PPO
-from Dynamic.drone_delivery_env import DroneDeliveryEnv
+from drone_delivery_env import DroneDeliveryEnv
 
 # Charger l'environnement
 env = DroneDeliveryEnv()
 env.show_render = True  # Activer l'affichage si nécessaire
+env.is_testing = False
 
 # Charger le modèle entraîné
-model_path = "checkpoints/ppo_multi_drone_delivery_4"
+model_path = "checkpoints/ppo_multi_drone_delivery.zip"
 model = PPO.load(model_path)
 
 # Configurer les paramètres de test
