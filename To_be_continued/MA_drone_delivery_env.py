@@ -56,13 +56,13 @@ class DroneDeliveryEnv(AECEnv):
         # Charger et redimensionner les images
         try:
             self.drone_logo = pygame.transform.scale(
-                pygame.image.load('images/drone.png'), (self.cell_size // 1.2, self.cell_size // 1.2)
+                pygame.image.load('../images/drone.png'), (self.cell_size // 1.2, self.cell_size // 1.2)
             )
             self.box_logo = pygame.transform.scale(
-                pygame.image.load('images/package.png'), (self.cell_size, self.cell_size)
+                pygame.image.load('../images/package.png'), (self.cell_size, self.cell_size)
             )
             self.collected_logo = pygame.transform.scale(
-                pygame.image.load('images/delivered_package.png'), (self.cell_size, self.cell_size)
+                pygame.image.load('../images/delivered_package.png'), (self.cell_size, self.cell_size)
             )
         except pygame.error as e:
             print(f"Erreur de chargement des images : {e}")
