@@ -5,8 +5,8 @@ from drone_delivery_env import DroneDeliveryEnv
 
 # Charger l'environnement
 env = DroneDeliveryEnv()
-env.show_render = True  # Activer l'affichage si nécessaire
-env.is_testing = False
+env.show_render = True # Activer l'affichage si nécessaire
+env.is_testing = True
 
 # Charger le modèle entraîné
 model_path = "checkpoints/ppo_multi_drone_delivery.zip"
