@@ -8,17 +8,17 @@ class DroneDeliveryEnv(Env):
 
         self.grid_size = 10
         self.num_drones = 3
-        self.water_position = np.array([0, 0])  # Position fixe de l'eau
-        self.person_position = None  # Position de la personne
+        self.water_position = np.array([0, 0])  # Fixed position of water
+        self.person_position = None  # Position of the person
         self.pos = np.zeros((self.num_drones, 2), dtype=np.int32)
-        self.carrying_water = [False] * self.num_drones  # État de transport de l'eau pour chaque drone
+        self.carrying_water = [False] * self.num_drones  # Water carrying state for each drone
 
-        self.visited_cells = np.zeros((self.grid_size, self.grid_size), dtype=bool)  # Cases explorées
-        self.steps_since_start = 0  # Nombre total d'étapes depuis le début
-        self.steps_without_finding_person = 0  # Étapes sans trouver la personne
+        self.visited_cells = np.zeros((self.grid_size, self.grid_size), dtype=bool)  # Explored cells
+        self.steps_since_start = 0  # Total steps since the start
+        self.steps_without_finding_person = 0  # Steps without finding the person
 
-        # Définition des espaces d'observation et d'action
-        obs_dim = self.num_drones * 2 + 2 + 2 + self.num_drones  # Positions des drones + eau + personne + état transport
+        # Define observation and action spaces
+        obs_dim = self.num_drones * 2 + 2 + 2 + self.num_drones  # Drone positions + water + person + carrying state
         self.observation_space = spaces.Box(low=0, high=self.grid_size, shape=(obs_dim,), dtype=np.int32)
         self.action_space = spaces.MultiDiscrete([4] * self.num_drones)
 
@@ -30,14 +30,14 @@ class DroneDeliveryEnv(Env):
         pygame.display.set_caption("Drone Delivery")
         self.clock = pygame.time.Clock()
 
-        # Chargement des logos
-        self.drone_logo = pygame.image.load('../images/drone.png')  # Assurez-vous que le fichier existe
+        # Load logos
+        self.drone_logo = pygame.image.load('../images/drone.png')  # Ensure the file exists
         self.person_logo = pygame.image.load('../images/package.png')
         self.person_found_logo = pygame.image.load('../images/delivered_package.png')
         self.water_logo = pygame.image.load('../images/santa.png')
         self.water_drone_logo = pygame.image.load('../images/water_drone.png')
 
-        # Redimensionnement des logos à la taille de la cellule
+        # Resize logos to cell size
         self.drone_logo = pygame.transform.scale(self.drone_logo, (self.cell_size // 1.2, self.cell_size // 1.2))
         self.person_logo = pygame.transform.scale(self.person_logo, (self.cell_size, self.cell_size))
         self.person_found_logo = pygame.transform.scale(self.person_found_logo, (self.cell_size, self.cell_size))
@@ -46,16 +46,16 @@ class DroneDeliveryEnv(Env):
 
         self.show_render = False
 
-        # Ajouter l'attribut is_testing pour déterminer si c'est un test
+        # Add the is_testing attribute to determine if it is a test
         self.is_testing = False
 
         self.reward_found_person = 1
         self.reward_staying_with_person = 0.01
         self.reward_deliver_water = 1
         self.reward_collective_success = 10
-        self.penalty_carrying_water = -0.01  # Pénalité par déplacement en transportant l'eau
-        self.penalty_inactivity = -0.05  # Malus si aucune personne n'est trouvée après 20 steps
-        self.reward_exploration = 0.05  # Bonus pour explorer une nouvelle case
+        self.penalty_carrying_water = -0.01  # Penalty for moving while carrying water
+        self.penalty_inactivity = -0.05  # Penalty if no person is found after 20 steps
+        self.reward_exploration = 0.05  # Reward for exploring a new cell
 
         self.person_found = False
         self.water_delivered = False
@@ -63,28 +63,28 @@ class DroneDeliveryEnv(Env):
 
     def _get_obs(self):
         if self.is_testing:
-            # Pour chaque drone, ne fournir que sa propre position et son état de transport
-            drone_positions = self.pos.flatten()  # Positions de tous les drones
-            person_position = self.person_position  # Position de la personne
-            water_position = np.array([0, 0])  # Position de l'eau (vide)
-            carrying_status = self.carrying_water # Statut de transport des drones
+            # For each drone, provide only its own position and carrying state
+            drone_positions = self.pos.flatten()  # Positions of all drones
+            person_position = self.person_position  # Position of the person
+            water_position = np.array([0, 0])  # Position of water (empty)
+            carrying_status = self.carrying_water  # Carrying state of drones
 
-            # Ajouter une perturbation aléatoire dans l'observation tous les 7 pas environ
-            if np.random.rand() < 1 / 7:  # Environ 1 chance sur 7 d'introduire une perturbation
-                # Perturber les positions des drones (les mettre à zéro)
+            # Add random disturbance in the observation every ~7 steps
+            if np.random.rand() < 1 / 7:  # About 1 in 7 chance of introducing a disturbance
+                # Disturb drone positions (set to zero)
                 drone_positions = np.zeros_like(drone_positions)
 
-            # Construire l'observation avec les bonnes valeurs
+            # Build observation with correct values
             observation = np.concatenate([
-                drone_positions,  # Positions des drones (potentiellement perturbées)
-                water_position,  # Position de l'eau
-                person_position,  # Position de la personne
-                carrying_status  # Statut de transport des drones
+                drone_positions,  # Drone positions (potentially disturbed)
+                water_position,  # Position of water
+                person_position,  # Position of the person
+                carrying_status  # Carrying state of drones
             ])
 
             return observation
         else:
-            # En phase d'entraînement, l'observation est complète (positions, eau, personne, état transport)
+            # During training, provide full observation (positions, water, person, carrying state)
             drone_positions = self.pos.flatten()
             carrying_status = np.array(self.carrying_water, dtype=np.int32)
             return np.concatenate([drone_positions, self.water_position, self.person_position, carrying_status])
@@ -92,7 +92,7 @@ class DroneDeliveryEnv(Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        # Générer une position aléatoire pour la personne
+        # Generate a random position for the person
         while True:
             person_position = np.random.randint(0, self.grid_size, size=2)
             if not np.array_equal(person_position, self.water_position):
@@ -120,13 +120,13 @@ class DroneDeliveryEnv(Env):
         self.steps_without_finding_person += 1
 
         for i, action in enumerate(actions):
-            if action == 0:  # Haut
+            if action == 0:  # Up
                 self.pos[i][1] = max(self.pos[i][1] - 1, 0)
-            elif action == 1:  # Bas
+            elif action == 1:  # Down
                 self.pos[i][1] = min(self.pos[i][1] + 1, self.grid_size - 1)
-            elif action == 2:  # Gauche
+            elif action == 2:  # Left
                 self.pos[i][0] = max(self.pos[i][0] - 1, 0)
-            elif action == 3:  # Droite
+            elif action == 3:  # Right
                 self.pos[i][0] = min(self.pos[i][0] + 1, self.grid_size - 1)
 
             if self.carrying_water[i]:
@@ -148,19 +148,17 @@ class DroneDeliveryEnv(Env):
                 if np.array_equal(self.pos[i], self.person_position):
                     rewards[i] += self.reward_staying_with_person
 
-
-
-        # Gestion de la prise d'eau
+        # Manage water pickup
         for i in range(self.num_drones):
             if not self.carrying_water[i] and np.array_equal(self.pos[i], self.water_position):
-                if not self.water_announced:  # Premier drone à prendre l'eau
+                if not self.water_announced:  # First drone to pick up water
                     if not self.person_found:
                         rewards[i] -= 0.2
                     else:
                         rewards[i] += 2
                     self.carrying_water[i] = True
-                    self.water_announced = True  # Annonce que l'eau a été prise
-                else:  # L'eau a déjà été prise, appliquer un malus
+                    self.water_announced = True  # Announce that water was picked up
+                else:  # Water already picked up, apply penalty
                     rewards[i] -= 0.01
 
         for i in range(self.num_drones):
@@ -182,19 +180,18 @@ class DroneDeliveryEnv(Env):
 
         return self._get_obs(), np.sum(rewards), done, False, info
 
-
     def render(self):
         self.screen.fill((255, 255, 255))
 
-        # Dessiner la grille
+        # Draw the grid
         for x in range(0, self.screen_size, self.cell_size):
             pygame.draw.line(self.screen, (200, 200, 200), (x, 0), (x, self.screen_size))
         for y in range(0, self.screen_size, self.cell_size):
             pygame.draw.line(self.screen, (200, 200, 200), (0, y), (self.screen_size, y))
 
-        # Centrer les drones
+        # Center drones
         for i in range(self.num_drones):
-            # Calculer le décalage pour centrer l'image sur la cellule
+            # Calculate offset to center the image on the cell
             drone_x = self.pos[i][0] * self.cell_size + (self.cell_size - self.drone_logo.get_width()) // 2
             drone_y = self.pos[i][1] * self.cell_size + (self.cell_size - self.drone_logo.get_height()) // 2
             if self.carrying_water[i]:
@@ -202,7 +199,7 @@ class DroneDeliveryEnv(Env):
             else:
                 self.screen.blit(self.drone_logo, (drone_x, drone_y))
 
-        # Centrer la personne
+        # Center the person
         person_x = self.person_position[0] * self.cell_size + (self.cell_size - self.person_logo.get_width()) // 2
         person_y = self.person_position[1] * self.cell_size + (self.cell_size - self.person_logo.get_height()) // 2
         if self.person_found:
@@ -210,14 +207,14 @@ class DroneDeliveryEnv(Env):
         else:
             self.screen.blit(self.person_logo, (person_x, person_y))
 
-        # Centrer l'eau
+        # Center the water
         water_x = self.water_position[0] * self.cell_size + (self.cell_size - self.water_logo.get_width()) // 2
         water_y = self.water_position[1] * self.cell_size + (self.cell_size - self.water_logo.get_height()) // 2
         self.screen.blit(self.water_logo, (water_x, water_y))
 
         pygame.display.update()
 
-        # Événements
+        # Handle events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.close()

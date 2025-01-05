@@ -3,47 +3,47 @@ import numpy as np
 from stable_baselines3 import PPO
 from drone_delivery_env import DroneDeliveryEnv
 
-# Charger l'environnement
+# Load the environment
 env = DroneDeliveryEnv()
-env.show_render = True # Activer l'affichage si nécessaire
-env.is_testing = True
+env.show_render = True  # Enable rendering if needed
+env.is_testing = False  # Set the environment to testing mode
 
-# Charger le modèle entraîné
+# Load the trained model
 model_path = "checkpoints/ppo_multi_drone_delivery.zip"
 model = PPO.load(model_path)
 
-# Configurer les paramètres de test
-num_episodes = 10  # Nombre d'épisodes à tester
-max_steps_per_episode = 100  # Nombre maximum de pas par épisode
+# Configure test parameters
+num_episodes = 10  # Number of episodes to test
+max_steps_per_episode = 100  # Maximum number of steps per episode
 
-# Boucle de test
+# Testing loop
 for episode in range(num_episodes):
-    obs, _ = env.reset()  # Réinitialiser l'environnement
+    obs, _ = env.reset()  # Reset the environment
     total_reward = 0
     done = False
     truncated = False
     steps = 0
 
-    print(f"--- Épisode {episode + 1} ---")
+    print(f"--- Episode {episode + 1} ---")
     while not (done or truncated) and steps < max_steps_per_episode:
-        # Obtenir une action prédite par le modèle
+        # Get an action predicted by the model
         action, _states = model.predict(obs, deterministic=True)
 
-        # Appliquer l'action et obtenir l'état suivant
+        # Apply the action and get the next state
         obs, reward, done, truncated, info = env.step(action)
 
-        # Ajouter la récompense obtenue
+        # Accumulate the reward obtained
         total_reward += reward
         steps += 1
 
         if env.show_render:
             env.render()
 
-        # Pause pour ralentir l'affichage
+        # Pause to slow down the rendering
         time.sleep(0.1)
 
-    print(f"Épisode terminé en {steps} étapes avec une récompense totale de {total_reward:.2f}\n")
+    print(f"Episode completed in {steps} steps with a total reward of {total_reward:.2f}\n")
 
-# Fermer l'environnement
+# Close the environment
 env.close()
-print("Tests terminés.")
+print("Testing completed.")
